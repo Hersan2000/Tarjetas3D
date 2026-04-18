@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Generador STL Pro: ODS + SVG + ZIP</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; gap: 20px; margin: 0; height: 100vh; box-sizing: border-box;}
+        .main-container { display: flex; gap: 20px; max-width: 1300px; width: 100%; height: 100%; }
+        
+        .panel { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 480px; flex-shrink: 0; overflow-y: auto; box-sizing: border-box;}
+        #preview-container { 
+            flex-grow: 1; 
+            background: #1a2634; 
+            border-radius: 12px; 
+            position: relative; 
+            overflow: hidden; 
+            border: 4px solid white; 
+            min-height: 500px;
+        }
+        
+        .loading-overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-weight: bold; pointer-events: none; z-index: 10;
+        }
+
+        h2 { color: #2e7d32; text-align: center; border-bottom: 3px solid #2e7d32; padding-bottom: 10px; margin: 0 0 15px 0; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        label { display: block; font-weight: bold; font-size: 0.7rem; color: #444; margin-bottom: 2px; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 0.85rem;}
+        
+        .line-config { display: grid; grid-template-columns: 1fr 100px; gap: 5px; margin-bottom: 5px; }
+        
+        .section-label { font-size: 0.75rem; font-weight: bold; color: #2e7d32; margin-top: 12px; display: block; border-left: 4px solid #2e7d32; padding-left: 8px; margin-bottom: 5px; background: #f9f9f9; }
+        
+        .checkbox-group { background: #e8f5e9; padding: 12px; border-radius: 6px; margin: 10px 0; border: 1px solid #c8e6c9; font-size: 0.85rem;}
+        
+        .batch-section { background: #f1f8e9; border: 2px dashed #2e7d32; padding: 15px; border-radius: 8px; margin-top: 20px; }
+        .svg-section { background: #e3f2fd; border: 1px solid #90caf9; padding: 15px; border-radius: 8px; margin-top: 15px; }
+        
+        .config-section { background: #fffde7; border: 2px solid #fff59d; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+
+        button { width: 100%; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; margin-top: 5px;}
+        .btn-single { background: #2e7d32; }
+        .btn-batch { background: #0277bd; }
+        .btn-util { background: #546e7a; padding: 6px; font-size: 0.75rem; margin-bottom: 5px;}
+        .btn-config { background: #f57f17; width: 48%; }
+        .btn-sample { background: #689f38; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    <div class="panel">
+        <h2 data-i18n="app_title">Configurador Tarjeta</h2>
+        
+        <div class="config-section">
+            <span style="font-weight:bold; color:#f57f17; font-size:0.8rem;">⚙️ <span data-i18n="config_title">UTILIDADES DE CONFIGURACIÓN</span></span>
+            <input type="file" id="configLoadInput" accept=".json" style="display:none;">
+            <div style="display:flex; justify-content:space-between; margin-top:10px;">
+                <button class="btn-util btn-config" id="configSaveBtn" data-i18n="btn_save_config">GUARDAR CONFIG.</button>
+                <button class="btn-util btn-config" id="configLoadBtn" data-i18n="btn_load_config">CARGAR CONFIG.</button>
+            </div>
+        </div>
+
+        <span class="section-label" data-i18n="lang_label">SELECTOR DE IDIOMA</span>
+        <select id="langSelector" style="margin-bottom:15px;">
+            <option value="es">Español</option>
+            <option value="en">English</option>
+        </select>
+
+        <div class="grid">
+            <div><label data-i18n="label_width">Ancho (mm):</label><input type="number" id="width" value="60"></div>
+            <div><label data-i18n="label_height">Alto (mm):</label><input type="number" id="height" value="40"></div>
+        </div>
+
+        <div class="checkbox-group">
+            <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 10px;">
+                <input type="checkbox" id="addHole" checked style="width: auto; margin-right: 8px;">
+                <label for="addHole" style="cursor:pointer; font-weight: bold;" data-i18n="check_hole">Añadir agujero</label>
+            </div>
+            <div class="grid" id="holeConfig">
+                <div><label data-i18n="label_hole_x">Agujero X (mm):</label><input type="number" id="holeX" value="55"></div>
+                <div><label data-i18n="label_hole_y">Agujero Y (mm):</label><input type="number" id="holeY" value="35"></div>
+            </div>
+        </div>
+
+        <span class="section-label" data-i18n="label_data_align">DATOS Y ALINEACIÓN</span>
+        <div id="lines-container">
+            <div class="line-config"><input type="text" id="line1" value="" placeholder="Línea 1"><select id="align1"><option value="left">Izquierda</option><option value="center" selected>Centro</option><option value="right">Derecha</option></select></div>
+            <div class="line-config"><input type="text" id="line2" value="" placeholder="Línea 2"><select id="align2"><option value="left">Izquierda</option><option value="center" selected>Centro</option><option value="right">Derecha</option></select></div>
+            <div class="line-config"><input type="text" id="line3" value="" placeholder="Línea 3"><select id="align3"><option value="left">Izquierda</option><option value="center" selected>Centro</option><option value="right">Derecha</option></select></div>
+            <div class="line-config"><input type="text" id="line4" value="" placeholder="Línea 4"><select id="align4"><option value="left">Izquierda</option><option value="center" selected>Centro</option><option value="right">Derecha</option></select></div>
+            <div class="line-config"><input type="text" id="line5" value="" placeholder="Línea 5"><select id="align5"><option value="left">Izquierda</option><option value="center" selected>Centro</option><option value="right">Derecha</option></select></div>
+        </div>
+
+        <div class="grid" style="margin-top:10px">
+            <div><label data-i18n="label_base_depth">Base Grosor (mm):</label><input type="number" id="baseDepth" value="1.0" step="0.1"></div>
+            <div><label data-i18n="label_text_relief">Texto Relieve (mm):</label><input type="number" id="relief" value="0.6" step="0.1"></div>
+        </div>
+
+        <div class="svg-section">
+            <span style="font-weight:bold; color:#1565c0; font-size:0.8rem;">🎨 LOGO SVG</span>
+            <input type="file" id="svgInput" accept=".svg">
+            <div class="grid" style="margin-top:10px">
+                <div><label data-i18n="label_svg_scale">Escala:</label><input type="number" id="svgScale" value="0.21" step="0.01"></div>
+                <div><label data-i18n="label_svg_relief">Relieve (mm):</label><input type="number" id="svgRelief" value="0.6" step="0.1"></div>
+            </div>
+            <div class="grid">
+                <div><label data-i18n="label_svg_x">Posición X:</label><input type="number" id="svgX" value="6"></div>
+                <div><label data-i18n="label_svg_y">Posición Y:</label><input type="number" id="svgY" value="16"></div>
+            </div>
+            <button class="btn-util" id="centerLogoBtn" data-i18n="btn_center_logo">CENTRAR LOGO AHORA</button>
+        </div>
+
+        <button class="btn-single" id="downloadSingle" data-i18n="btn_download_single">DESCARGAR ESTA TARJETA</button>
+
+        <div class="batch-section">
+            <span style="font-weight:bold; color:#1b5e20; display: block; margin-bottom: 10px;">📂 <span data-i18n="batch_title">PROCESAR LOTE ODS</span></span>
+            <button class="btn-util btn-sample" id="downloadSample" data-i18n="btn_download_sample">DESCARGAR EJEMPLO .ODS</button>
+            <input type="file" id="fileInput" accept=".ods" style="margin: 5px 0 10px 0;">
+            <select id="batchMode">
+                <option value="zip" data-i18n="batch_zip">Descargar en un .ZIP</option>
+                <option value="individual" data-i18n="batch_files">Archivos .STL separados</option>
+            </select>
+            <button class="btn-batch" id="processBatch" data-i18n="btn_generate_batch">GENERAR TODO</button>
+        </div>
+    </div>
+
+    <div id="preview-container">
+        <div id="loading" class="loading-overlay" data-i18n="loading_msg">Cargando visualizador 3D...</div>
+    </div>
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+    import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+    import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+    import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
+
+    let scene, camera, renderer, controls, font, cardGroup;
+    let loadedSVShapes = null;
+    let rawSVGContent = null;
+    let currentLanguage = 'es';
+
+    const translations = {
+        'es': {
+            'app_title': 'Configurador Tarjeta', 'lang_label': 'SELECTOR DE IDIOMA', 'label_width': 'Ancho (mm):', 'label_height': 'Alto (mm):',
+            'check_hole': 'Añadir agujero', 'label_hole_x': 'Agujero X (mm):', 'label_hole_y': 'Agujero Y (mm):', 'label_data_align': 'DATOS Y ALINEACIÓN',
+            'align_left': 'Izquierda', 'align_center': 'Centro', 'align_right': 'Derecha', 'label_base_depth': 'Base Grosor (mm):', 'label_text_relief': 'Texto Relieve (mm):',
+            'label_svg_scale': 'Escala:', 'label_svg_relief': 'Relieve (mm):', 'label_svg_x': 'Posición X:', 'label_svg_y': 'Posición Y:',
+            'btn_center_logo': 'CENTRAR LOGO AHORA', 'btn_download_single': 'DESCARGAR ESTA TARJETA', 'batch_title': 'PROCESAR LOTE ODS',
+            'batch_zip': 'Descargar en un .ZIP', 'batch_files': 'Archivos .STL separados', 'btn_generate_batch': 'GENERAR TODO',
+            'config_title': 'UTILIDADES DE CONFIGURACIÓN', 'btn_save_config': 'GUARDAR CONFIG.', 'btn_load_config': 'CARGAR CONFIG.',
+            'placeholder_line': 'Línea', 'loading_msg': 'Cargando visualizador 3D...', 'font_error': 'Error cargando tipografía.',
+            'alert_upload_svg': 'Carga un SVG primero', 'alert_select_ods': 'Selecciona un ODS', 'alert_batch_done': 'Proceso finalizado',
+            'alert_select_json': 'Selecciona un archivo .json de configuración', 'btn_download_sample': 'DESCARGAR EJEMPLO .ODS'
+        },
+        'en': {
+            'app_title': 'STL Card Configurator', 'lang_label': 'LANGUAGE SELECTOR', 'label_width': 'Width (mm):', 'label_height': 'Height (mm):',
+            'check_hole': 'Add hanging hole', 'label_hole_x': 'Hole X (mm):', 'label_hole_y': 'Hole Y (mm):', 'label_data_align': 'DATA & ALIGNMENT',
+            'align_left': 'Left', 'align_center': 'Center', 'align_right': 'Right', 'label_base_depth': 'Base Thickness (mm):', 'label_text_relief': 'Text Relief (mm):',
+            'label_svg_scale': 'Scale:', 'label_svg_relief': 'Relieve (mm):', 'label_svg_x': 'X Position:', 'label_svg_y': 'Y Position:',
+            'btn_center_logo': 'CENTER LOGO NOW', 'btn_download_single': 'DOWNLOAD THIS CARD', 'batch_title': 'PROCESS ODS BATCH',
+            'batch_zip': 'Download in .ZIP', 'batch_files': 'Separate .STL files', 'btn_generate_batch': 'GENERATE ALL',
+            'config_title': 'CONFIGURATION UTILITIES', 'btn_save_config': 'SAVE CONFIG.', 'btn_load_config': 'LOAD CONFIG.',
+            'placeholder_line': 'Line', 'loading_msg': 'Loading 3D viewer...', 'font_error': 'Error loading font.',
+            'alert_upload_svg': 'Please upload an SVG first', 'alert_select_ods': 'Please select an ODS file', 'alert_batch_done': 'Batch processing complete',
+            'alert_select_json': 'Please select a configuration .json file', 'btn_download_sample': 'DOWNLOAD SAMPLE .ODS'
+        }
+    };
+
+    init();
+
+    function init() {
+        switchLanguage('es');
+        const container = document.getElementById('preview-container');
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a2634);
+        camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 1000);
+        camera.position.set(0, -80, 100);
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(renderer.domElement);
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+        const pointLight = new THREE.PointLight(0xffffff, 1);
+        pointLight.position.set(50, 50, 100);
+        scene.add(pointLight);
+        cardGroup = new THREE.Group();
+        scene.add(cardGroup);
+
+        new FontLoader().load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/fonts/gentilis_bold.typeface.json', (f) => {
+            font = f;
+            document.getElementById('loading').style.display = 'none';
+            updatePreview();
+        });
+
+        window.addEventListener('resize', onWindowResize);
+        document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', updatePreview));
+        document.getElementById('svgInput').addEventListener('change', handleSVGUpload);
+        document.getElementById('downloadSingle').addEventListener('click', downloadCurrent);
+        document.getElementById('processBatch').addEventListener('click', processODS);
+        document.getElementById('centerLogoBtn').addEventListener('click', centerSVGManually);
+        document.getElementById('downloadSample').addEventListener('click', downloadSampleODS);
+        document.getElementById('addHole').addEventListener('change', (e) => {
+            document.getElementById('holeConfig').style.display = e.target.checked ? 'grid' : 'none';
+        });
+        document.getElementById('langSelector').addEventListener('change', (e) => switchLanguage(e.target.value));
+        document.getElementById('configSaveBtn').addEventListener('click', saveConfig);
+        document.getElementById('configLoadBtn').addEventListener('click', () => document.getElementById('configLoadInput').click());
+        document.getElementById('configLoadInput').addEventListener('change', loadConfig);
+        animate();
+    }
+
+    function downloadSampleODS() {
+        const data = [
+            ["Juan", "García", "Martínez", "Matemáticas", "IES Francisco de Goya"],
+            ["María", "López", "Sánchez", "Lengua Castellana", "IES El Greco"],
+            ["Carlos", "Pérez", "Rodríguez", "Geografía e Historia", "IES Salvador Dalí"],
+            ["Elena", "González", "Fernández", "Inglés", "IES María Zambrano"],
+            ["Sergio", "Ruiz", "Gómez", "Educación Física", "IES Severo Ochoa"],
+            ["Lucía", "Díaz", "Álvarez", "Tecnología", "IES Miguel de Cervantes"],
+            ["David", "Moreno", "Jiménez", "Biología y Geología", "IES Clara Campoamor"],
+            ["Paula", "Muñoz", "Romero", "Física y Química", "IES Rosalía de Castro"],
+            ["Jorge", "Navarro", "Torres", "Música", "IES Antonio Machado"],
+            ["Ana", "Vázquez", "Castro", "Orientación", "IES Luis Buñuel"]
+        ];
+        const worksheet = XLSX.utils.aoa_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Ejemplo");
+        const odsData = XLSX.write(workbook, { bookType: 'ods', type: 'array' });
+        saveAs(new Blob([odsData], { type: "application/vnd.oasis.opendocument.spreadsheet" }), "ejemplo.ods");
+    }
+
+    function switchLanguage(lang) {
+        currentLanguage = lang;
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            el.innerText = translations[lang][el.getAttribute('data-i18n')];
+        });
+        for(let i=1; i<=5; i++) document.getElementById(`line${i}`).placeholder = `${translations[lang]['placeholder_line']} ${i}`;
+    }
+
+    function saveConfig() {
+        const config = getCurrentConfig();
+        const json = JSON.stringify(config, null, 2);
+        saveAs(new Blob([json]), `tarjeta_config_${new Date().toISOString().slice(0,10)}.json`);
+    }
+
+    function loadConfig(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const c = JSON.parse(e.target.result);
+                document.getElementById('width').value = c.w;
+                document.getElementById('height').value = c.h;
+                document.getElementById('baseDepth').value = c.base;
+                document.getElementById('relief').value = c.relief;
+                document.getElementById('addHole').checked = c.hasHole;
+                document.getElementById('holeX').value = c.holeX || 55;
+                document.getElementById('holeY').value = c.holeY || 35;
+                document.getElementById('svgScale').value = c.svgScale;
+                document.getElementById('svgRelief').value = c.svgRelief;
+                document.getElementById('svgX').value = c.svgX;
+                document.getElementById('svgY').value = c.svgY;
+                document.getElementById('holeConfig').style.display = c.hasHole ? 'grid' : 'none';
+                c.lines.forEach((l, i) => {
+                    document.getElementById(`line${i+1}`).value = l.text;
+                    document.getElementById(`align${i+1}`).value = l.align;
+                });
+                if (c.svgData) {
+                    rawSVGContent = c.svgData;
+                    const loader = new SVGLoader();
+                    const svgData = loader.parse(rawSVGContent);
+                    loadedSVShapes = svgData.paths.flatMap(path => SVGLoader.createShapes(path));
+                }
+                updatePreview();
+            } catch (err) { alert(translations[currentLanguage]['alert_select_json']); }
+        };
+        reader.readAsText(file);
+    }
+
+    function handleSVGUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            rawSVGContent = e.target.result;
+            const loader = new SVGLoader();
+            const svgData = loader.parse(rawSVGContent);
+            loadedSVShapes = svgData.paths.flatMap(path => SVGLoader.createShapes(path));
+            updatePreview();
+        };
+        reader.readAsText(file);
+    }
+
+    function centerSVGManually() {
+        if (!loadedSVShapes) return alert(translations[currentLanguage]['alert_upload_svg']);
+        const scale = parseFloat(document.getElementById('svgScale').value);
+        const box = new THREE.Box3();
+        loadedSVShapes.forEach(shape => {
+            const geo = new THREE.ShapeGeometry(shape);
+            geo.computeBoundingBox();
+            box.expandByPoint(geo.boundingBox.min);
+            box.expandByPoint(geo.boundingBox.max);
+        });
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        document.getElementById('svgX').value = (-(size.x * scale) / 2).toFixed(2);
+        document.getElementById('svgY').value = ((size.y * scale) / 2).toFixed(2);
+        updatePreview();
+    }
+
+    function createGeometry(data) {
+        if (!font) return null;
+        const group = new THREE.Group();
+        const w = data.w, h = data.h;
+        const shape = new THREE.Shape();
+        const r = 3;
+        shape.moveTo(-w/2+r, -h/2); shape.lineTo(w/2-r, -h/2);
+        shape.quadraticCurveTo(w/2, -h/2, w/2, -h/2+r); shape.lineTo(w/2, h/2-r);
+        shape.quadraticCurveTo(w/2, h/2, w/2-r, h/2); shape.lineTo(-w/2+r, h/2);
+        shape.quadraticCurveTo(-w/2, h/2, -w/2, h/2-r); shape.lineTo(-w/2, -h/2+r);
+        shape.quadraticCurveTo(-w/2, -h/2, -w/2+r, -h/2);
+        if (data.hasHole) {
+            const hole = new THREE.Path();
+            hole.absarc(-w/2 + data.holeX, -h/2 + data.holeY, 2.2, 0, Math.PI * 2, true);
+            shape.holes.push(hole);
+        }
+        const baseGeo = new THREE.ExtrudeGeometry(shape, { depth: data.base, bevelEnabled: false, curveSegments: 8 });
+        baseGeo.translate(0, 0, -data.base);
+        group.add(new THREE.Mesh(baseGeo, new THREE.MeshPhongMaterial({ color: 0xffffff })));
+        const yPos = [h * 0.30, h * 0.15, 0, -h * 0.16, -h * 0.31];
+        const sizes = [h * 0.10, h * 0.10, h * 0.10, h * 0.08, h * 0.08];
+        const textMat = new THREE.MeshPhongMaterial({ color: 0x2e7d32 });
+        data.lines.forEach((lineObj, i) => {
+            if (!lineObj.text || !lineObj.text.toString().trim()) return;
+            const tGeo = new TextGeometry(lineObj.text.toString(), {
+                font: font, size: sizes[i], height: data.relief - 0.1,
+                curveSegments: 3, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.1, bevelSegments: 1
+            });
+            tGeo.computeBoundingBox();
+            let tw = tGeo.boundingBox.max.x - tGeo.boundingBox.min.x;
+            const maxWidth = w - 10;
+            if (tw > maxWidth) { tGeo.scale(maxWidth / tw, 1, 1); tw = maxWidth; }
+            let xOff = lineObj.align === 'left' ? -w/2+5 : (lineObj.align === 'right' ? w/2-5-tw : -tw/2);
+            tGeo.translate(xOff, yPos[i] - (sizes[i]/2), 0);
+            group.add(new THREE.Mesh(tGeo, textMat));
+        });
+        if (loadedSVShapes) {
+            const svgMat = new THREE.MeshPhongMaterial({ color: 0x0277bd });
+            loadedSVShapes.forEach(s => {
+                const svgGeo = new THREE.ExtrudeGeometry(s, { depth: data.svgRelief, bevelEnabled: false });
+                svgGeo.scale(data.svgScale, -data.svgScale, 1);
+                svgGeo.translate(data.svgX, data.svgY, 0);
+                group.add(new THREE.Mesh(svgGeo, svgMat));
+            });
+        }
+        return group;
+    }
+
+    function getCurrentConfig() {
+        return {
+            w: parseFloat(document.getElementById('width').value) || 1,
+            h: parseFloat(document.getElementById('height').value) || 1,
+            base: parseFloat(document.getElementById('baseDepth').value) || 0.1,
+            relief: parseFloat(document.getElementById('relief').value) || 0.1,
+            hasHole: document.getElementById('addHole').checked,
+            holeX: parseFloat(document.getElementById('holeX').value) || 55,
+            holeY: parseFloat(document.getElementById('holeY').value) || 35,
+            svgScale: parseFloat(document.getElementById('svgScale').value) || 0.01,
+            svgRelief: parseFloat(document.getElementById('svgRelief').value) || 0.1,
+            svgX: parseFloat(document.getElementById('svgX').value) || 0,
+            svgY: parseFloat(document.getElementById('svgY').value) || 0,
+            svgData: rawSVGContent,
+            lines: [1,2,3,4,5].map(i => ({ text: document.getElementById(`line${i}`).value, align: document.getElementById(`align${i}`).value }))
+        };
+    }
+
+    function updatePreview() {
+        while(cardGroup.children.length > 0) cardGroup.remove(cardGroup.children[0]);
+        const geo = createGeometry(getCurrentConfig());
+        if(geo) cardGroup.add(geo);
+    }
+
+    function onWindowResize() {
+        const cont = document.getElementById('preview-container');
+        camera.aspect = cont.clientWidth / cont.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(cont.clientWidth, cont.clientHeight);
+    }
+
+    function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+
+    // MODIFICADO: AHORA SIGUE LA REGLA DE NOMBRE SOLICITADA
+    function downloadCurrent() {
+        const exporter = new STLExporter();
+        const result = exporter.parse(cardGroup, { binary: true });
+        
+        const nombre = document.getElementById('line1').value.trim() || "tarjeta";
+        const inicial1 = document.getElementById('line2').value.trim().charAt(0) || "";
+        const inicial2 = document.getElementById('line3').value.trim().charAt(0) || "";
+        
+        const fileName = `tarjeta_${nombre}_${inicial1}${inicial2}.stl`;
+        saveAs(new Blob([result]), fileName);
+    }
+
+    function saveAs(blob, name) {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = name;
+        link.click();
+    }
+
+    async function processODS() {
+        const file = document.getElementById('fileInput').files[0];
+        if (!file) return alert(translations[currentLanguage]['alert_select_ods']);
+        const mode = document.getElementById('batchMode').value;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+            const zip = new JSZip();
+            const base = getCurrentConfig();
+            
+            for (let i = 0; i < rows.length; i++) {
+                if (!rows[i] || !rows[i][0]) continue;
+                
+                const nombre = rows[i][0].toString().trim();
+                const inicial1 = rows[i][1] ? rows[i][1].toString().trim().charAt(0) : "";
+                const inicial2 = rows[i][2] ? rows[i][2].toString().trim().charAt(0) : "";
+                const fileName = `tarjeta_${nombre}_${inicial1}${inicial2}.stl`;
+
+                const config = { ...base, lines: base.lines.map((l, idx) => ({ text: rows[i][idx] || "", align: l.align })) };
+                const stlData = new STLExporter().parse(createGeometry(config), { binary: true });
+                
+                if (mode === 'zip') {
+                    zip.file(fileName, stlData.buffer);
+                } else {
+                    saveAs(new Blob([stlData.buffer]), fileName);
+                }
+            }
+            if (mode === 'zip') {
+                saveAs(await zip.generateAsync({ type: "blob" }), "lote_tarjetas.zip");
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+</script>
+</body>
+</html>
